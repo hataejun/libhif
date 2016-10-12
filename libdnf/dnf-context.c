@@ -147,6 +147,19 @@ on_extension_removed (G_GNUC_UNUSED PeasExtensionSet *set,
     dnf_activatable_deactivate (activatable);
 }
 
+static void
+on_extension_setup (G_GNUC_UNUSED PeasExtensionSet *set,
+                                  PeaspluginInfo   *info,
+                                  DnfActivatable   *activatable,
+                                  DnfContext       *ctx)
+{
+    g_autoptr(GError) error = NULL;
+    gboolean ret = dnf_activatable_setup (activatable, ctx, &error);
+    if (!ret && error != NULL)
+        g_warning ("Failure in setup() from plugin %s: %s",
+                   peas_plugin_info_get_name (info), error->message);
+}
+
 /**
  * dnf_context_finalize:
  **/
@@ -1516,9 +1529,9 @@ dnf_context_setup_enrollments(DnfContext *context, GError **error)
  * Since: 0.1.0
  **/
 gboolean
-dnf_context_setup(DnfContext *context,
-           GCancellable *cancellable,
-           GError **error)
+dnf_context_setup (DnfContext    *context,
+                   GCancellable  *cancellable,
+                   GError       **error)
 {
     DnfContextPrivate *priv = GET_PRIVATE(context);
     guint i;
@@ -1625,6 +1638,11 @@ dnf_context_setup(DnfContext *context,
         return FALSE;
     if (!dnf_context_copy_vendor_solv(context, error))
         return FALSE;
+
+    /* run setup() from all enabled plugins */
+    peas_extension_set_foreach (priv->extension_set
+                                (PeasExtensionSetForeachFunc)on_extension_setup,
+                                context);
 
     /* initialize external frameworks where installed */
     if (!dnf_context_setup_enrollments(context, error))

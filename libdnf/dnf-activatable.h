@@ -32,11 +32,18 @@ struct _DnfActivatableInterface
 {
     GTypeInterface parent_iface;
 
-    void (*activate)   (DnfActivatable *activatable);
-    void (*deactivate) (DnfActivatable *activatable);
+    void (*activate)   (DnfActivatable  *activatable);
+    void (*deactivate) (DnfActivatable  *activatable);
+
+    gboolean (*setup)  (DnfActivatable  *activatable,
+                        DnfContext      *ctx,
+                        GError         **error);
 };
 
-void dnf_activatable_activate   (DnfActivatable *activatable);
-void dnf_activatable_deactivate (DnfActivatable *activatable);
+void     dnf_activatable_activate   (DnfActivatable  *activatable);
+void     dnf_activatable_deactivate (DnfActivatable  *activatable);
+gboolean dnf_activatable_setup      (DnfActivatable  *activatable,
+                                     DnfContext      *ctx,
+                                     GError         **error);
 
 G_END_DECLS

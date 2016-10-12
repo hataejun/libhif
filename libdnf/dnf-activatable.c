@@ -67,3 +67,26 @@ dnf_activatable_deactivate (DnfActivatable *activatable)
     g_return_if_fail (iface->deactivate != NULL);
     iface->deactivate (activatable);
 }
+
+/**
+ * dnf_activatable_setup:
+ * @activatable: a #DnfActivatable
+ * @ctx: a #DnfContext
+ * @error: a #GError
+ *
+ * Setup the extension. Called when dnf_context_setup () is executed.
+ *
+ * Returns: %TRUE if callback is not implemented in plugin or ran successfully,
+ *          %FALSE otherwise.
+ */
+gboolean
+dnf_activatable_setup (DnfActivatable  *activatable,
+                       DnfContext      *ctx,
+                       GError         **error)
+{
+    g_return_val_if_fail (DNF_IS_ACTIVATABLE (activatable), TRUE);
+
+    DnfActivatableInterface *iface = DNF_ACTIVATABLE_GET_IFACE (activatable);
+    g_return_val_if_fail (iface->setup != NULL, TRUE);
+    return iface->setup (activatable, ctx, error);
+}
