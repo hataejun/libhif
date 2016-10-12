@@ -34,7 +34,9 @@
 #include <rpm/rpmlib.h>
 #include <rpm/rpmmacro.h>
 #include <librepo/librepo.h>
+#include <libpeas/peas.h>
 
+#include "dnf-activatable.h"
 #include "dnf-lock.h"
 #include "dnf-package.h"
 #include "dnf-repo-loader.h"
@@ -113,6 +115,8 @@ typedef struct
     DnfState        *state;        /* used for setup() and run() */
     HyGoal           goal;
     DnfSack         *sack;
+
+    PeasExtensionSet *extension_set;
 } DnfContextPrivate;
 
 enum {
@@ -124,6 +128,24 @@ static guint signals [SIGNAL_LAST] = { 0 };
 
 G_DEFINE_TYPE_WITH_PRIVATE(DnfContext, dnf_context, G_TYPE_OBJECT)
 #define GET_PRIVATE(o) (dnf_context_get_instance_private (o))
+
+static void
+on_extension_added (G_GNUC_UNUSED PeasExtensionSet *set,
+                    G_GNUC_UNUSED PeasPluginInfo   *info,
+                                  DnfActivatable   *activatable,
+                    G_GNUC_UNUSED DnfContext       *ctx)
+{
+    dnf_activatable_activate (activatable);
+}
+
+static void
+on_extension_removed (G_GNUC_UNUSED PeasExtensionSet *set,
+                      G_GNUC_UNUSED PeasPluginInfo   *info,
+                                    DnfActivatable   *activatable,
+                      G_GNUC_UNUSED DnfContext       *ctx)
+{
+    dnf_activatable_deactivate (activatable);
+}
 
 /**
  * dnf_context_finalize:
@@ -167,6 +189,8 @@ dnf_context_finalize(GObject *object)
     if (priv->monitor_rpmdb != NULL)
         g_object_unref(priv->monitor_rpmdb);
 
+    g_clear_object (&priv->extension_set);
+
     G_OBJECT_CLASS(dnf_context_parent_class)->finalize(object);
 }
 
@@ -188,11 +212,55 @@ dnf_context_init(DnfContext *context)
                                                   g_free, g_free);
     priv->user_agent = g_strdup("libdnf/" PACKAGE_VERSION);
 
+    g_autoptr(PeasEngine) engine = peas_engine_get_default ();
+
+    /* Enable Python 3 plugins */
+    peas_engine_enable_loader (engine, "python3");
+
+    if (g_getenv ("DNF_IN_TREE_PLUGINS") != NULL) {
+        g_autoptr(GError) error = NULL;
+        g_irepository_require_private (g_irepository_get_default (),
+                                       BUILDDIR,
+                                       "Dnf", "1.0",
+                                       0,
+                                       &error);
+        g_assert_no_error (error);
+        peas_engine_prepend_search_path (engine,
+                                         BUILDDIR"/plugins",
+                                         SRCDIR"/plugins");
+    } else {
+        peas_engine_prepend_search_path (engine,
+                                         PACKAGE_LIBDIR"/plugins",
+                                         PACKAGE_DATADIR"/plugins");
+    }
+
+    g_autofree gchar *path = g_build_filename (g_get_user_data_dir (),
+                                               "dnf",
+                                               "plugins",
+                                               NULL);
+    peas_engine_prepend_search_path (engine, path, NULL);
+
+    priv->extension_set = peas_extension_set_new (engine,
+                                                  DNF_TYPE_ACTIVATABLE,
+                                                  NULL);
+
     /* Initialize some state that used to happen in
      * dnf_context_setup(), because callers like rpm-ostree want
      * access to the basearch, but before installroot.
      */
     (void) dnf_context_globals_init(NULL);
+
+    peas_extension_set_foreach (priv->extension_set,
+                                (PeasExtensionSetForeachFunc)on_extension_added,
+                                context);
+    g_signal_connect (priv->extension_set, "extension-added", G_CALLBACK (on_extension_added), context);
+    g_signal_connect (priv->extension_set, "extension-removed", G_CALLBACK (on_extension_removed), context);
+
+    /* Load all plugins */
+    for (const GList *plugin = peas_engine_get_plugin_list (engine);
+         plugin != NULL;
+         plugin = plugin->next)
+        peas_engine_load_plugin (engine, (PeasPluginInfo *)plugin->data);
 }
 
 /**
