@@ -149,7 +149,7 @@ on_extension_removed (G_GNUC_UNUSED PeasExtensionSet *set,
 
 static void
 on_extension_setup (G_GNUC_UNUSED PeasExtensionSet *set,
-                                  PeaspluginInfo   *info,
+                                  PeasPluginInfo   *info,
                                   DnfActivatable   *activatable,
                                   DnfContext       *ctx)
 {
@@ -1640,7 +1640,7 @@ dnf_context_setup (DnfContext    *context,
         return FALSE;
 
     /* run setup() from all enabled plugins */
-    peas_extension_set_foreach (priv->extension_set
+    peas_extension_set_foreach (priv->extension_set,
                                 (PeasExtensionSetForeachFunc)on_extension_setup,
                                 context);
 
